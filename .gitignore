@@ -1,1 +1,4 @@
-/.DS_Store
+**/.DS_Store
+interaction/app/bin
+interaction/app/obj
+interaction/addons/obj 
