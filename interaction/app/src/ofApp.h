@@ -24,13 +24,16 @@ public:
 private:
     ofxOscReceiver receiver;
     std::vector<Pose> poses;
+    std::vector<float> pose_times;  // tiempos de última actualización
     static constexpr int OSC_PORT = 12345;
     static constexpr float CONFIDENCE_THRESHOLD = 0.5;
+    static constexpr int MAX_POSES = 30;  // máximo número de poses a mantener
+    static constexpr float POSE_TIMEOUT = 1.0f;  // timeout en segundos
     
     // definición del esqueleto (pares de índices)
     const std::vector<std::pair<int, int>> SKELETON = {
-        {0, 1},   // nariz -> ojo izquierdo
-        {0, 2},   // nariz -> ojo derecho
+        {0, 3},   // nariz -> oreja izquierda
+        {0, 4},   // nariz -> oreja derecha
         {1, 3},   // ojo izquierdo -> oreja izquierda
         {2, 4},   // ojo derecho -> oreja derecha
         {5, 7},   // hombro izquierdo -> codo izquierdo

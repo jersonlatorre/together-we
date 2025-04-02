@@ -19,14 +19,17 @@ CONFIDENCE_THRESHOLD = 0.5  # umbral de confianza para dibujar
 # verificar si mps está disponible
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 use_webcam = False
+show_video = False
+flip_video = False
 
 # inicializar el modelo de pose estimation con mps
-model = YOLO("models/yolo11m-pose.pt")
+model = YOLO("models/yolo11s-pose.pt")
 model.to(device)
 
 # configuraciones de optimización
 PROCESS_EVERY_N_FRAMES = 2  # procesar cada N frames
 TARGET_WIDTH = 640  # ancho objetivo para procesamiento
+MAX_POSES = 30  # máximo número de poses a detectar
 SKELETON = np.array(
     [
         [0, 1],  # nariz -> ojo izquierdo
@@ -51,14 +54,16 @@ SKELETON = np.array(
 # inicializar la fuente de video según use_webcam
 if use_webcam:
     cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # buffer moderado para webcam
 else:
     cap = cv2.VideoCapture("videos/demo.mp4")
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # buffer moderado para archivo
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
 # variables para almacenar las poses detectadas
 cached_keypoints = []
 cached_scale = 1.0
+last_frame_time = time.time()  # para controlar el framerate
 
 
 def draw_poses(frame, keypoints_list, scale):
@@ -159,12 +164,25 @@ def send_poses_osc(keypoints_list, frame_width, frame_height):
 
 frame_count = 0
 while True:
+    # control de framerate
+    current_time = time.time()
+    if current_time - last_frame_time < 1.0 / 30.0:  # limitar a 30 fps
+        continue
+    last_frame_time = current_time
+
     ret, frame = cap.read()
     if not ret:
         if not use_webcam:
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            # limpiar el buffer antes de reiniciar
+            for _ in range(5):  # descartar algunos frames
+                cap.read()
             continue
         break
+
+    # flip horizontal del video si está activado
+    if flip_video:
+        frame = cv2.flip(frame, 1)
 
     frame_count += 1
     if frame_count % PROCESS_EVERY_N_FRAMES == 0:
@@ -185,7 +203,7 @@ while True:
         for result in results:
             if result.keypoints is not None:
                 for keypoints in result.keypoints.data:
-                    if len(keypoints) > 0:
+                    if len(keypoints) > 0 and len(cached_keypoints) < MAX_POSES:
                         cached_keypoints.append(keypoints.cpu().numpy())
 
         # enviar datos osc si hay poses detectadas
@@ -195,9 +213,14 @@ while True:
     # dibujar poses (ya sea desde caché o recién detectadas)
     draw_poses(frame, cached_keypoints, cached_scale)
 
-    cv2.imshow("Pose Detection", frame)
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
+    if show_video:
+        cv2.imshow("Pose Detection", frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+    else:
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
 
 cap.release()
-cv2.destroyAllWindows()
+if show_video:
+    cv2.destroyAllWindows()
