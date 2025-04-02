@@ -2,25 +2,25 @@
 
 void ofApp::setup() {
   ofSetWindowTitle("interaction");
-  ofSetFrameRate(30);
+  ofSetFrameRate(0); // detener el bucle automático
   ofSetVerticalSync(true);
-  ofBackground(0);
   ofSetWindowShape(800, 600);
 
   // configurar receptor osc
   receiver.setup(OSC_PORT);
+
+  // configurar FBO
+  ofFboSettings settings;
+  settings.width = ofGetWidth();
+  settings.height = ofGetHeight();
+  settings.numSamples = 4; // activar antialiasing con 4 muestras
+  fbo.allocate(settings);
 }
 
 void ofApp::update() {
-  float current_time = ofGetElapsedTimef();
-
-  // limpiar poses antiguas
-  for (int i = poses.size() - 1; i >= 0; i--) {
-    if (current_time - pose_times[i] > POSE_TIMEOUT) {
-      poses.erase(poses.begin() + i);
-      pose_times.erase(pose_times.begin() + i);
-    }
-  }
+  // limpiar poses del frame anterior
+  poses.clear();
+  has_new_data = false;
 
   // procesar mensajes osc
   while (receiver.hasWaitingMessages()) {
@@ -40,46 +40,80 @@ void ofApp::update() {
         pose.keypoints.push_back(kp);
       }
 
-      // actualizar o añadir la pose
-      if (pose.id < poses.size()) {
-        poses[pose.id] = pose;
-        pose_times[pose.id] = current_time;
-      } else if (poses.size() < MAX_POSES) {
+      // añadir la pose si no excedemos el máximo
+      if (poses.size() < MAX_POSES) {
         poses.push_back(pose);
-        pose_times.push_back(current_time);
+        has_new_data = true;
       }
     }
   }
+
+  // si recibimos nuevos datos, actualizar el FBO
+  if (has_new_data) {
+    updateFbo();
+  }
 }
 
-void ofApp::draw() {
+void ofApp::updateFbo() {
+  // dibujar en el FBO
+  fbo.begin();
+  ofBackground(0);
+
   // dibujar poses
   for (const auto &pose : poses) {
     // dibujar líneas del esqueleto
     ofSetColor(0, 255, 0); // verde para las líneas
     ofSetLineWidth(2);
 
-    for (const auto &[start_idx, end_idx] : SKELETON) {
-      if (start_idx >= pose.keypoints.size() ||
-          end_idx >= pose.keypoints.size()) {
-        continue;
+    // dibujar solo la línea que conecta las manos a través de los brazos y
+    // hombros
+    const int left_hand = 9;      // índice de la mano izquierda
+    const int left_elbow = 7;     // índice del codo izquierdo
+    const int left_shoulder = 5;  // índice del hombro izquierdo
+    const int right_shoulder = 6; // índice del hombro derecho
+    const int right_elbow = 8;    // índice del codo derecho
+    const int right_hand = 10;    // índice de la mano derecha
+
+    if (pose.keypoints.size() > right_hand) {
+      const auto &left_hand_kp = pose.keypoints[left_hand];
+      const auto &left_elbow_kp = pose.keypoints[left_elbow];
+      const auto &left_shoulder_kp = pose.keypoints[left_shoulder];
+      const auto &right_shoulder_kp = pose.keypoints[right_shoulder];
+      const auto &right_elbow_kp = pose.keypoints[right_elbow];
+      const auto &right_hand_kp = pose.keypoints[right_hand];
+      const auto &left_eye_kp = pose.keypoints[1];
+      const auto &right_eye_kp = pose.keypoints[2];
+
+      if (left_hand_kp.confidence > CONFIDENCE_THRESHOLD &&
+          left_elbow_kp.confidence > CONFIDENCE_THRESHOLD &&
+          left_shoulder_kp.confidence > CONFIDENCE_THRESHOLD &&
+          right_shoulder_kp.confidence > CONFIDENCE_THRESHOLD &&
+          right_elbow_kp.confidence > CONFIDENCE_THRESHOLD &&
+          right_hand_kp.confidence > CONFIDENCE_THRESHOLD) {
+
+        ofDrawLine(left_hand_kp.x, left_hand_kp.y, left_elbow_kp.x,
+                   left_elbow_kp.y);
+        ofDrawLine(left_elbow_kp.x, left_elbow_kp.y, left_shoulder_kp.x,
+                   left_shoulder_kp.y);
+        ofDrawLine(left_shoulder_kp.x, left_shoulder_kp.y, right_shoulder_kp.x,
+                   right_shoulder_kp.y);
+        ofDrawLine(right_shoulder_kp.x, right_shoulder_kp.y, right_elbow_kp.x,
+                   right_elbow_kp.y);
+        ofDrawLine(right_elbow_kp.x, right_elbow_kp.y, right_hand_kp.x,
+                   right_hand_kp.y);
       }
 
-      const auto &start = pose.keypoints[start_idx];
-      const auto &end = pose.keypoints[end_idx];
-
-      if (start.confidence > CONFIDENCE_THRESHOLD &&
-          end.confidence > CONFIDENCE_THRESHOLD) {
-        ofDrawLine(start.x, start.y, end.x, end.y);
-      }
-    }
-
-    // dibujar puntos
-    ofSetColor(255, 0, 0); // rojo para los puntos
-    for (const auto &kp : pose.keypoints) {
-      if (kp.confidence > CONFIDENCE_THRESHOLD) {
-        ofDrawCircle(kp.x, kp.y, 5);
+      // dibujar línea entre ojos si tienen suficiente confianza
+      if (left_eye_kp.confidence > CONFIDENCE_THRESHOLD ||
+          right_eye_kp.confidence > CONFIDENCE_THRESHOLD) {
+        ofDrawLine(left_eye_kp.x, left_eye_kp.y, right_eye_kp.x, right_eye_kp.y);
       }
     }
   }
+  fbo.end();
+}
+
+void ofApp::draw() {
+  // solo dibujar el FBO en la pantalla
+  fbo.draw(0, 0);
 }

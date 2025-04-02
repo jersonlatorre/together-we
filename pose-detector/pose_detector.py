@@ -18,9 +18,9 @@ CONFIDENCE_THRESHOLD = 0.5  # umbral de confianza para dibujar
 
 # verificar si mps está disponible
 device = "mps" if torch.backends.mps.is_available() else "cpu"
-use_webcam = False
+use_webcam = True
 show_video = False
-flip_video = False
+flip_video = True
 
 # inicializar el modelo de pose estimation con mps
 model = YOLO("models/yolo11s-pose.pt")
@@ -56,7 +56,7 @@ if use_webcam:
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # buffer moderado para webcam
 else:
-    cap = cv2.VideoCapture("videos/demo.mp4")
+    cap = cv2.VideoCapture("videos/demo-11.mp4")
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # buffer moderado para archivo
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
